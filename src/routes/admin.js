@@ -151,13 +151,28 @@ router.get('/stats', async (_req, res, next) => {
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const [total, unread, replied, today] = await Promise.all([
+    const DAYS = 14;
+    const first = new Date();
+    first.setUTCHours(0, 0, 0, 0);
+    first.setUTCDate(first.getUTCDate() - (DAYS - 1));
+    const [total, unread, replied, today, perDay] = await Promise.all([
       Lead.countDocuments(),
       Lead.countDocuments(unreadFilter),
       Lead.countDocuments({ replyStatus: 'sent' }),
       Lead.countDocuments({ createdAt: { $gte: startOfDay } }),
+      Lead.aggregate([
+        { $match: { createdAt: { $gte: first } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
+      ]),
     ]);
-    res.json({ ok: true, total, unread, replied, today });
+    const counts = new Map(perDay.map((d) => [d._id, d.count]));
+    const daily = Array.from({ length: DAYS }, (_, i) => {
+      const d = new Date(first);
+      d.setUTCDate(first.getUTCDate() + i);
+      const date = d.toISOString().slice(0, 10);
+      return { date, count: counts.get(date) ?? 0 };
+    });
+    res.json({ ok: true, total, unread, replied, today, daily });
   } catch (err) {
     next(err);
   }
