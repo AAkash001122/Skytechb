@@ -11,9 +11,12 @@ import { requireAdmin } from './middleware/auth.js';
 
 const { PORT = 5000, MONGODB_URI, JWT_SECRET, CORS_ORIGIN = 'http://localhost:5173' } = process.env;
 
+// Browsers send the origin without a trailing slash, so tolerate a pasted "https://site.vercel.app/" and stray spaces/empty entries.
+const allowedOrigins = CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/+$/, '')).filter(Boolean);
+
 const app = express();
 app.use(helmet());
-app.use(cors({ origin: CORS_ORIGIN.split(',').map((o) => o.trim()), methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE'] }));
+app.use(cors({ origin: allowedOrigins, methods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE'] }));
 app.use(express.json({ limit: '20kb' }));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -35,6 +38,10 @@ async function start() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI is not set. Copy .env.example to .env.');
   if (!JWT_SECRET || JWT_SECRET.length < 32) throw new Error('JWT_SECRET must be a random string of at least 32 characters.');
   await mongoose.connect(MONGODB_URI);
+  console.log(`CORS: allowing ${allowedOrigins.join(', ') || '(none)'}`);
+  if (process.env.NODE_ENV === 'production' && !allowedOrigins.some((o) => o.startsWith('https://'))) {
+    console.warn('CORS_ORIGIN has no https:// origin. Your deployed frontend will be blocked by the browser. Set CORS_ORIGIN to its URL.');
+  }
   app.listen(PORT, () => console.log(`SkyTech API listening on :${PORT}`));
 }
 
